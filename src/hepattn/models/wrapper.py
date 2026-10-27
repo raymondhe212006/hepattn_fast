@@ -9,6 +9,8 @@ from torch.optim import AdamW
 from torchjd import mtl_backward
 from torchjd.aggregation import UPGrad
 
+from hepattn.utils.memlog import mem
+
 
 class ModelWrapper(LightningModule):
     def __init__(
@@ -89,6 +91,7 @@ class ModelWrapper(LightningModule):
 
         # Compute and log losses
         outputs, targets, losses = self.model.loss(outputs, targets)
+        mem("matcher + losses")
 
         # Get the predictions from the model, avoid calling predict if possible
         if batch_idx % self.trainer.log_every_n_steps == 0:

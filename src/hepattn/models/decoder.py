@@ -18,6 +18,7 @@ from hepattn.models.norm import get_hybrid_norm_config
 from hepattn.models.posenc import pos_enc_symmetric
 from hepattn.utils.kmeans_ca import KMeansCrossAttention
 from hepattn.utils.local_ca import auto_local_ca_mask
+from hepattn.utils.memlog import mem
 from hepattn.utils.model_utils import unmerge_inputs
 
 
@@ -295,6 +296,7 @@ class MaskFormerDecoder(nn.Module):
                 if self.unmask_all_false:
                     attn_mask = torch.where(torch.all(~attn_mask, dim=-1, keepdim=True), True, attn_mask)
 
+            mem(f"decoder layer {layer_index}: tasks + mask")
             if (attn_mask is not None) and self.attn_type != "flex":
                 outputs[f"layer_{layer_index}"]["attn_mask"] = attn_mask
 
@@ -314,6 +316,7 @@ class MaskFormerDecoder(nn.Module):
                 attn_mask_transpose=attn_mask_transpose,
                 logits=logits,
             )
+            mem(f"decoder layer {layer_index}: attention")
 
             # update the individual input constituent representations only if not in merged input mode
             if not self.unified_decoding:
@@ -443,8 +446,10 @@ class MaskFormerDecoderLayer(nn.Module):
         else:
             q = self.q_ca(q_pe, k=kv_pe, v=kv, attn_mask=attn_mask, q_mask=q_mask, kv_mask=kv_mask)
 
+        mem("    q_ca  (queries <- hits)")
         q = self.q_dense(q)
         q = self.q_sa(q, k=q, v=q, q_mask=q_mask)
+        mem("    q_dense + q_sa")
 
         # Update key/constituent embeddings with the query/object embeddings
         if self.bidirectional_ca:
@@ -457,7 +462,9 @@ class MaskFormerDecoderLayer(nn.Module):
             kv_pe = kv if key_posenc is None else kv + key_posenc
 
             kv = self.kv_ca(kv_pe, k=q_pe, v=q, attn_mask=attn_mask, q_mask=kv_mask, kv_mask=q_mask)
+            mem("    kv_ca (hits <- queries)")
             kv = self.kv_dense(kv)
+            mem("    kv_dense")
 
         return q, kv
 

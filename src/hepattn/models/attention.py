@@ -16,6 +16,7 @@ except ImportError:
 from torch import Size, Tensor, nn
 from torch.nn.attention.flex_attention import BlockMask, _score_mod_signature, flex_attention
 from torch.nn.functional import scaled_dot_product_attention
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from hepattn.models.norm import NORM_TYPES
 from hepattn.utils.bert_padding import pad_input, unpad_input
@@ -405,7 +406,24 @@ class Attention(nn.Module):
                     attn_bias = attn_bias.masked_fill(~attn_mask, float("-inf"))
 
                 attn_mask = attn_bias
-            out = self.attn(q, k, v, attn_mask=attn_mask)
+
+            D = q.shape[-1]
+            pad = (-D) % 8
+
+            if pad != 0:
+                q = F.pad(q, (0, pad))
+                k = F.pad(k, (0, pad))
+                v = F.pad(v, (0, pad))
+
+            if attn_mask is not None:
+                attn_mask = attn_mask.contiguous()
+
+            with sdpa_kernel([SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
+                out = self.attn(q, k, v, attn_mask=attn_mask, scale= D ** -0.5)
+
+            if pad != 0:
+                out = out[..., :D]
+
         elif self.attn_type == "flash":
             out = self.attn(q, k, v, window_size=self.window_size)
         else:

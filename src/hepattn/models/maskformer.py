@@ -4,6 +4,7 @@ import torch
 from torch import Tensor, nn
 
 from hepattn.models.decoder import MaskFormerDecoder
+from hepattn.utils.memlog import mem
 from hepattn.utils.model_utils import unmerge_inputs
 
 
@@ -74,6 +75,7 @@ class MaskFormer(nn.Module):
         return [input_net.input_name for input_net in self.input_nets]
 
     def forward(self, inputs: dict[str, Tensor]) -> dict[str, dict[str, dict[str, Tensor]]]:
+        mem("step start (prev backward + optimizer)")
         batch_size = inputs[self.input_names[0] + "_valid"].shape[0]
         x = {"inputs": inputs}
 
@@ -129,7 +131,9 @@ class MaskFormer(nn.Module):
 
         # Pass merged input constituents through the encoder
         x_sort_value = x.get(f"key_{self.input_sort_field}") if self.sorter is None else None
+        mem("input nets")
         x["key_embed"] = self.encoder(x["key_embed"], x_sort_value=x_sort_value, kv_mask=x.get("key_valid"))
+        mem("encoder")
 
         # Keep dynamic query initialization compatible with unified decoding by ensuring
         # source_embed/source_valid refer to *post-encoder* features.
